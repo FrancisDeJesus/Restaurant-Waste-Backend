@@ -7,7 +7,7 @@ class DonationDrive(models.Model):
     description = models.TextField(blank=True)
     waste_type = models.CharField(
         max_length=50,
-        choices=TrashPickup.WASTE_TYPE_CHOICES,  # ✅ fixed name
+        choices=TrashPickup.WASTE_TYPE_CHOICES,  # ✅ Link to existing waste types
         default="kitchen"
     )
     created_at = models.DateTimeField(default=timezone.now)
@@ -17,11 +17,14 @@ class DonationDrive(models.Model):
         return f"{self.title} ({self.get_waste_type_display()})"
 
 
-
 class Donation(models.Model):
     drive = models.ForeignKey(DonationDrive, on_delete=models.CASCADE, related_name='donations')
-    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    waste_type = models.CharField(
+        max_length=50,
+        choices=TrashPickup.WASTE_TYPE_CHOICES
+    )
+    weight_kg = models.DecimalField(max_digits=6, decimal_places=2)
     donated_at = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
-        return f"{self.user.username} - {self.drive.title} ({self.amount})"
+        return f"{self.waste_type} - {self.drive.title} ({self.weight_kg} kg)"
