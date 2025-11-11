@@ -7,6 +7,9 @@ from .models import (
     FoodIngredient,
     UnitType,
     IngredientHistory,
+    MenuItem,
+    MenuItemBatch,
+    IngredientPurchase,
 )
 
 # ===========================================================
@@ -15,7 +18,7 @@ from .models import (
 class UnitTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = UnitType
-        fields = ['id', 'name', 'abbreviation', 'conversion_factor']
+        fields = ["id", "name", "abbreviation", "conversion_factor"]
 
 
 # ===========================================================
@@ -27,266 +30,187 @@ class IngredientSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Ingredient
-        fields = ["id", "name", "quantity", "unit_type", "unit_type_name", "unit_type_abbreviation"]
+        fields = [
+            "id",
+            "name",
+            "quantity",
+            "unit_type",
+            "unit_type_name",
+            "unit_type_abbreviation",
+        ]
 
 
 # ===========================================================
-# 🕓 HISTORY
+# 🕓 INGREDIENT HISTORY
 # ===========================================================
 class IngredientHistorySerializer(serializers.ModelSerializer):
-    change_type_display = serializers.CharField(source='get_change_type_display', read_only=True)
-    ingredient_name = serializers.CharField(source='ingredient.name', read_only=True)
+    change_type_display = serializers.CharField(source="get_change_type_display", read_only=True)
+    ingredient_name = serializers.CharField(source="ingredient.name", read_only=True)
 
     class Meta:
         model = IngredientHistory
         fields = [
-            'id',
-            'ingredient',
-            'ingredient_name',
-            'change_type',
-            'change_type_display',
-            'amount',
-            'unit',
-            'note',
-            'timestamp',
+            "id",
+            "ingredient",
+            "ingredient_name",
+            "change_type",
+            "change_type_display",
+            "amount",
+            "unit",
+            "note",
+            "timestamp",
         ]
 
 
 # ===========================================================
-# 🍽 FOOD INGREDIENT
+# 🍱 FOOD INGREDIENT (Links Recipe ↔ Inventory)
 # ===========================================================
-class FoodIngredientSerializer(serializers.ModelSerializer):
-    ingredient_name = serializers.CharField(source='ingredient.name', read_only=True)
-    unit_type_name = serializers.CharField(source='unit_type.name', read_only=True)
-    unit_type_abbreviation = serializers.CharField(source='unit_type.abbreviation', read_only=True)
+class FoodIngredientWriteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FoodIngredient
+        fields = ["ingredient", "quantity_used", "unit_type"]
+
+
+class FoodIngredientReadSerializer(serializers.ModelSerializer):
+    ingredient_name = serializers.CharField(source="ingredient.name", read_only=True)
+    unit_type_name = serializers.CharField(source="unit_type.name", read_only=True)
+    unit_type_abbreviation = serializers.CharField(source="unit_type.abbreviation", read_only=True)
 
     class Meta:
         model = FoodIngredient
         fields = [
-            'id',
-            'ingredient',
-            'ingredient_name',
-            'quantity_used',
-            'unit_type',
-            'unit_type_name',
-            'unit_type_abbreviation',
+            "id",
+            "ingredient",
+            "ingredient_name",
+            "quantity_used",
+            "unit_type",
+            "unit_type_name",
+            "unit_type_abbreviation",
         ]
-        extra_kwargs = {
-            'ingredient': {'required': False},
-            'unit_type': {'required': False},
-        }
 
 
 # ===========================================================
-# 🧾 FOOD ITEM
+# 🍽 FOOD ITEM (Recipe Definition)
 # ===========================================================
 class FoodItemSerializer(serializers.ModelSerializer):
-    food_ingredients = FoodIngredientSerializer(many=True, required=False)
+    food_ingredients = FoodIngredientWriteSerializer(many=True, write_only=True, required=False)
+    ingredients = FoodIngredientReadSerializer(source="food_ingredients", many=True, read_only=True)
 
     class Meta:
         model = FoodItem
         fields = [
-            'id',
-            'name',
-            'description',
-            'price',
-            'category',
-            'servings',
-            'food_ingredients',
-            'created_at',
+            "id",
+            "restaurant",
+            "name",
+            "description",
+            "price",
+            "category",
+            "servings",
+            "food_ingredients",
+            "ingredients",
+            "created_at",
         ]
+        read_only_fields = ["restaurant", "created_at"]
 
-    # ===========================================================
-    # 🧮 CREATE — deduct stock & log usage
-    # ===========================================================
     @transaction.atomic
     def create(self, validated_data):
-        try:
-            ingredients_data = validated_data.pop('food_ingredients', [])
-            food_item = FoodItem.objects.create(**validated_data)
+        food_ingredients_data = validated_data.pop("food_ingredients", [])
+        food_item = FoodItem.objects.create(**validated_data)
 
-            for ingredient_data in ingredients_data:
-                print("🔹 Processing:", ingredient_data)
-                ingredient_id = ingredient_data['ingredient']
-                qty_used = float(ingredient_data.get('quantity_used', 0))
-                unit_type_id = ingredient_data.get('unit_type')
+        for fi_data in food_ingredients_data:
+            FoodIngredient.objects.create(food_item=food_item, **fi_data)
 
-                ingredient_obj = Ingredient.objects.get(
-                    id=ingredient_id if isinstance(ingredient_id, int) else ingredient_id.id
-                )
-                recipe_unit = (
-                    unit_type_id if isinstance(unit_type_id, UnitType)
-                    else UnitType.objects.get(id=unit_type_id)
-                )
-                inventory_unit = ingredient_obj.unit_type
-
-                print(f"✅ Ingredient={ingredient_obj.name}, Qty={qty_used}, "
-                      f"RecipeUnit={recipe_unit.name}, InventoryUnit={inventory_unit.name}")
-
-                recipe_qty_base = qty_used * recipe_unit.conversion_factor
-                inventory_qty_base = ingredient_obj.quantity * inventory_unit.conversion_factor
-
-                if inventory_qty_base < recipe_qty_base:
-                    raise serializers.ValidationError(
-                        f"Not enough stock for '{ingredient_obj.name}'. "
-                        f"Available: {ingredient_obj.quantity} {inventory_unit.abbreviation}, "
-                        f"Required: {qty_used} {recipe_unit.abbreviation}."
-                    )
-
-                used_in_inventory_unit = recipe_qty_base / inventory_unit.conversion_factor
-                ingredient_obj.quantity -= used_in_inventory_unit
-                ingredient_obj.save()
-
-                # ✅ Log usage in IngredientHistory
+            # Auto-deduct from stock
+            ingredient = fi_data["ingredient"]
+            qty_used = fi_data["quantity_used"]
+            if ingredient.quantity >= qty_used:
+                ingredient.quantity -= qty_used
+                ingredient.save()
                 IngredientHistory.objects.create(
-                    ingredient=ingredient_obj,
+                    ingredient=ingredient,
                     change_type="used_in_recipe",
                     amount=qty_used,
-                    unit=recipe_unit.abbreviation,
-                    note=f"Used in recipe: {food_item.name}",
+                    unit=ingredient.unit_type.abbreviation,
+                    note=f"Used in new recipe '{food_item.name}'."
                 )
+        return food_item
 
-                FoodIngredient.objects.create(
-                    food_item=food_item,
-                    ingredient=ingredient_obj,
-                    quantity_used=qty_used,
-                    unit_type=recipe_unit,
-                )
 
-            print("✅ Successfully created food item:", food_item.name)
-            return food_item
+# ===========================================================
+# 🍴 MENU ITEM
+# ===========================================================
+class MenuItemSerializer(serializers.ModelSerializer):
+    food_item_name = serializers.CharField(source="food_item.name", read_only=True)
 
-        except Exception as e:
-            import traceback
-            print("🚨 ERROR DURING CREATE:", e)
-            traceback.print_exc()
-            raise serializers.ValidationError(str(e))
+    class Meta:
+        model = MenuItem
+        fields = [
+            "id",
+            "name",
+            "description",
+            "category",
+            "food_item",
+            "food_item_name",
+            "created_at",
+        ]
 
-    # ===========================================================
-    # 🔁 UPDATE — adjust ingredient list, stock, and log changes
-    # ===========================================================
-    @transaction.atomic
-    def update(self, instance, validated_data):
-        try:
-            ingredients_data = validated_data.pop('food_ingredients', None)
 
-            for attr, value in validated_data.items():
-                setattr(instance, attr, value)
-            instance.save()
+# ===========================================================
+# 🧾 MENU ITEM BATCH
+# ===========================================================
+class MenuItemBatchSerializer(serializers.ModelSerializer):
+    menu_item_name = serializers.CharField(source="menu_item.name", read_only=True)
+    is_expired = serializers.SerializerMethodField()
 
-            if ingredients_data is not None:
-                existing = {fi.ingredient_id: fi for fi in instance.food_ingredients.all()}
-                new_ids = []
+    class Meta:
+        model = MenuItemBatch
+        fields = [
+            "id",
+            "menu_item",
+            "menu_item_name",
+            "quantity_prepared",
+            "prepared_date",
+            "expiry_date",
+            "is_discarded",
+            "discarded_reason",
+            "discarded_at",
+            "weight_discarded",
+            "created_at",
+            "is_expired",
+        ]
+        read_only_fields = ["discarded_at", "is_expired"]
 
-                for ing_data in ingredients_data:
-                    ing_id = (
-                        ing_data['ingredient'].id
-                        if isinstance(ing_data['ingredient'], Ingredient)
-                        else ing_data['ingredient']
-                    )
-                    qty_used = float(ing_data.get('quantity_used', 0))
-                    unit_type_data = ing_data.get('unit_type')
+    def get_is_expired(self, obj):
+        return obj.is_expired()
 
-                    new_ids.append(ing_id)
-                    ingredient_obj = Ingredient.objects.get(id=ing_id)
+    def validate(self, data):
+        expiry_date = data.get("expiry_date")
+        prepared_date = data.get("prepared_date")
+        if expiry_date and prepared_date and expiry_date < prepared_date:
+            raise serializers.ValidationError("Expiry date cannot be before prepared date.")
+        return data
 
-                    recipe_unit = (
-                        unit_type_data if isinstance(unit_type_data, UnitType)
-                        else UnitType.objects.get(id=unit_type_data)
-                    )
-                    inventory_unit = ingredient_obj.unit_type
 
-                    if ing_id in existing:
-                        fi = existing[ing_id]
-                        old_qty_base = fi.quantity_used * fi.unit_type.conversion_factor
-                        new_qty_base = qty_used * recipe_unit.conversion_factor
-                        diff_base = new_qty_base - old_qty_base
+# ===========================================================
+# 🛒 INGREDIENT PURCHASE
+# ===========================================================
+class IngredientPurchaseSerializer(serializers.ModelSerializer):
+    ingredient_name = serializers.CharField(source="ingredient.name", read_only=True)
+    is_expired = serializers.SerializerMethodField()
 
-                        if diff_base > 0:
-                            available_base = ingredient_obj.quantity * inventory_unit.conversion_factor
-                            if available_base < diff_base:
-                                raise serializers.ValidationError(
-                                    f"Not enough stock to increase '{ingredient_obj.name}'."
-                                )
-                            ingredient_obj.quantity -= diff_base / inventory_unit.conversion_factor
+    class Meta:
+        model = IngredientPurchase
+        fields = [
+            "id",
+            "ingredient",
+            "ingredient_name",
+            "quantity",
+            "unit",
+            "purchase_date",
+            "expiry_date",
+            "is_expired",
+            "created_at",
+        ]
 
-                            # ✅ Log deduction
-                            IngredientHistory.objects.create(
-                                ingredient=ingredient_obj,
-                                change_type="used_in_recipe",
-                                amount=abs(diff_base) / recipe_unit.conversion_factor,
-                                unit=recipe_unit.abbreviation,
-                                note=f"Extra usage in {instance.name} update",
-                            )
-
-                        elif diff_base < 0:
-                            ingredient_obj.quantity += abs(diff_base) / inventory_unit.conversion_factor
-
-                            # ✅ Log restock adjustment
-                            IngredientHistory.objects.create(
-                                ingredient=ingredient_obj,
-                                change_type="added",
-                                amount=abs(diff_base) / recipe_unit.conversion_factor,
-                                unit=recipe_unit.abbreviation,
-                                note=f"Stock restored during {instance.name} update",
-                            )
-
-                        ingredient_obj.save()
-                        fi.quantity_used = qty_used
-                        fi.unit_type = recipe_unit
-                        fi.save()
-
-                    else:
-                        # ✅ Handle new ingredient addition
-                        recipe_qty_base = qty_used * recipe_unit.conversion_factor
-                        inventory_qty_base = ingredient_obj.quantity * inventory_unit.conversion_factor
-                        if inventory_qty_base < recipe_qty_base:
-                            raise serializers.ValidationError(
-                                f"Not enough stock for '{ingredient_obj.name}'."
-                            )
-                        ingredient_obj.quantity -= recipe_qty_base / inventory_unit.conversion_factor
-                        ingredient_obj.save()
-
-                        # ✅ Log new ingredient usage
-                        IngredientHistory.objects.create(
-                            ingredient=ingredient_obj,
-                            change_type="used_in_recipe",
-                            amount=qty_used,
-                            unit=recipe_unit.abbreviation,
-                            note=f"Newly added to {instance.name} recipe",
-                        )
-
-                        FoodIngredient.objects.create(
-                            food_item=instance,
-                            ingredient=ingredient_obj,
-                            quantity_used=qty_used,
-                            unit_type=recipe_unit,
-                        )
-
-                # ✅ Restore stock for removed ingredients
-                for ing_id, fi in existing.items():
-                    if ing_id not in new_ids:
-                        ingredient_obj = Ingredient.objects.get(id=ing_id)
-                        restore_base = fi.quantity_used * fi.unit_type.conversion_factor
-                        ingredient_obj.quantity += restore_base / ingredient_obj.unit_type.conversion_factor
-                        ingredient_obj.save()
-
-                        # ✅ Log ingredient removal
-                        IngredientHistory.objects.create(
-                            ingredient=ingredient_obj,
-                            change_type="added",
-                            amount=fi.quantity_used,
-                            unit=fi.unit_type.abbreviation,
-                            note=f"Restored stock after removal from {instance.name}",
-                        )
-
-                        fi.delete()
-
-            print("✅ Successfully updated food item:", instance.name)
-            return instance
-
-        except Exception as e:
-            import traceback
-            print("🚨 ERROR DURING UPDATE:", e)
-            traceback.print_exc()
-            raise serializers.ValidationError(str(e))
+    def get_is_expired(self, obj):
+        return obj.is_expired()

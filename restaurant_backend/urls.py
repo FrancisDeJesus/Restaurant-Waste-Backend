@@ -29,6 +29,7 @@ urlpatterns = [
     path('api/food_menu/', include('food_menu.urls')),
     path('api/analytics/', include('analytics.urls')),
     path('api/', include('drivers.urls')),
+    path("api/subscriptions/", include("subscriptions.urls")),
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 ]

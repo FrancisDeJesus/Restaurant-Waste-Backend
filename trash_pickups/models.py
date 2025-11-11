@@ -24,6 +24,9 @@ class TrashPickup(models.Model):
         ("cancelled", "Cancelled"),
     ]
 
+    segregation_score = models.FloatField(default=0.0)
+
+
     # =========================================================
     # 👤 RELATIONSHIPS
     # =========================================================

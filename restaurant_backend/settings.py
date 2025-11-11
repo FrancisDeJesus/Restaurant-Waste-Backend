@@ -47,7 +47,8 @@ INSTALLED_APPS = [
     'donation_drive',
     'food_menu',
     'analytics',
-    'drivers'
+    'drivers',
+    'subscriptions'
 ]
 
 MIDDLEWARE = [

@@ -14,11 +14,8 @@ from trash_pickups.serializers import TrashPickupSerializer
 # 🔒 Custom Permission: Admin or Driver Owner
 # =========================================================
 class IsAdminOrDriverSelf(permissions.BasePermission):
-    """
-    Allow access if:
-    - user is staff (admin), OR
-    - user is the driver linked to the object
-    """
+    """Allow access if user is admin or the driver linked to the object."""
+
     def has_object_permission(self, request, view, obj):
         if request.user.is_staff:
             return True
@@ -33,9 +30,8 @@ class IsAdminOrDriverSelf(permissions.BasePermission):
 class DriverViewSet(viewsets.ModelViewSet):
     queryset = Driver.objects.filter(is_active=True)
 
-    # ✅ Dynamic permissions
+    # ✅ Dynamic permissions — allow authenticated drivers
     def get_permissions(self):
-        # Allow authenticated drivers for operational actions
         if self.action in [
             "me",
             "assigned_pickups",
@@ -46,7 +42,6 @@ class DriverViewSet(viewsets.ModelViewSet):
             "history",
         ]:
             return [permissions.IsAuthenticated()]
-        # Admin-only for CRUD operations
         return [permissions.IsAdminUser()]
 
     def get_serializer_class(self):
@@ -57,15 +52,15 @@ class DriverViewSet(viewsets.ModelViewSet):
     # =========================================================
     # 👤 DRIVER PROFILE (GET /drivers/me/)
     # =========================================================
-    @action(detail=False, methods=["get"], url_path="me", permission_classes=[permissions.IsAuthenticated])
+    @action(detail=False, methods=["get"], url_path="me")
     def me(self, request):
         """Return the logged-in driver's profile."""
-        if not hasattr(request.user, "driver_profile"):
+        driver = getattr(request.user, "driver_profile", None)
+        if not driver:
             return Response(
                 {"detail": "Not a driver account."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        driver = request.user.driver_profile
         serializer = DriverSerializer(driver, context={"request": request})
         return Response(serializer.data)
 
@@ -77,7 +72,7 @@ class DriverViewSet(viewsets.ModelViewSet):
         """List all active pickups assigned to this driver."""
         driver = get_object_or_404(Driver, pk=pk)
 
-        # Permission: only this driver or admin
+        # ✅ Restrict non-admins to their own pickups
         if not request.user.is_staff:
             if not hasattr(request.user, "driver_profile") or request.user.driver_profile.id != driver.id:
                 return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
@@ -89,18 +84,21 @@ class DriverViewSet(viewsets.ModelViewSet):
     # =========================================================
     # 📦 AVAILABLE PICKUPS (GET /drivers/available/)
     # =========================================================
-    @action(detail=False, methods=["get"], url_path="available", permission_classes=[permissions.IsAuthenticated],)
-
+    @action(detail=False, methods=["get"], url_path="available")
     def available_pickups(self, request):
-
-        if not request.user.is_staff and not hasattr(request.user, "driver_profile"):
+        """
+        Return all available pickups (pending + unassigned).
+        Accessible only by logged-in drivers.
+        """
+        driver = getattr(request.user, "driver_profile", None)
+        if not driver:
             return Response(
-                {"detail": "Only drivers or admins can view available pickups."},
+                {"detail": "You must be logged in as a driver to view available pickups."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
+        # ✅ Fetch unassigned and pending pickups
         pickups = TrashPickup.objects.filter(status="pending", driver__isnull=True).order_by("-created_at")
-
         serializer = TrashPickupSerializer(pickups, many=True, context={"request": request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -112,7 +110,6 @@ class DriverViewSet(viewsets.ModelViewSet):
         """View all completed pickups for this driver."""
         driver = get_object_or_404(Driver, pk=pk)
 
-        # Permission: only self or admin
         if not request.user.is_staff:
             if not hasattr(request.user, "driver_profile") or request.user.driver_profile.id != driver.id:
                 return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
@@ -131,7 +128,7 @@ class DriverViewSet(viewsets.ModelViewSet):
         if not driver:
             return Response({"detail": "Only drivers can accept pickups."}, status=status.HTTP_403_FORBIDDEN)
 
-        # Prevent one driver from accepting for another
+        # ✅ Validate identity
         if driver.id != int(pk) and not request.user.is_staff:
             return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
 
@@ -139,12 +136,16 @@ class DriverViewSet(viewsets.ModelViewSet):
         if not pickup_id:
             return Response({"error": "pickup_id is required."}, status=status.HTTP_400_BAD_REQUEST)
 
+        # ✅ Ensure pickup is still pending and unassigned
         pickup = get_object_or_404(TrashPickup, pk=pickup_id, status="pending", driver__isnull=True)
         pickup.driver = driver
         pickup.status = "accepted"
         pickup.save()
 
-        return Response({"message": f"Pickup #{pickup.id} assigned to {driver.full_name}."}, status=status.HTTP_200_OK)
+        return Response(
+            {"message": f"Pickup #{pickup.id} assigned to {driver.full_name}."},
+            status=status.HTTP_200_OK,
+        )
 
     # =========================================================
     # 🚀 START PICKUP (PATCH /drivers/{id}/start/)
@@ -154,12 +155,10 @@ class DriverViewSet(viewsets.ModelViewSet):
         """Driver starts or resumes an accepted pickup."""
         driver = get_object_or_404(Driver, pk=pk)
 
-        # ✅ Permission: only the driver or admin
         if not request.user.is_staff:
             if not hasattr(request.user, "driver_profile") or request.user.driver_profile.id != driver.id:
                 return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
 
-        # ✅ Allow both "accepted" and "in_progress"
         pickup = (
             TrashPickup.objects.filter(driver=driver, status__in=["accepted", "in_progress"])
             .order_by("-created_at")
@@ -167,10 +166,7 @@ class DriverViewSet(viewsets.ModelViewSet):
         )
 
         if not pickup:
-            return Response(
-                {"detail": "No TrashPickup matches the given query."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            return Response({"detail": "No active pickup found."}, status=status.HTTP_404_NOT_FOUND)
 
         if pickup.status != "in_progress":
             pickup.status = "in_progress"
@@ -187,7 +183,7 @@ class DriverViewSet(viewsets.ModelViewSet):
     # =========================================================
     @action(detail=True, methods=["patch"], url_path="complete")
     def complete_pickup(self, request, pk=None):
-        """Driver completes the pickup."""
+        """Driver completes a pickup."""
         driver = getattr(request.user, "driver_profile", None)
         if not driver:
             return Response({"detail": "Only drivers can complete pickups."}, status=status.HTTP_403_FORBIDDEN)
@@ -206,4 +202,7 @@ class DriverViewSet(viewsets.ModelViewSet):
         pickup.status = "completed"
         pickup.save()
 
-        return Response({"message": f"Pickup #{pickup.id} completed successfully."}, status=status.HTTP_200_OK)
+        return Response(
+            {"message": f"Pickup #{pickup.id} completed successfully."},
+            status=status.HTTP_200_OK,
+        )
