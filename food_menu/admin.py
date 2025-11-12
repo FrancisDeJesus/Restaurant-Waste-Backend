@@ -13,18 +13,14 @@ from .models import (
     IngredientPurchase,
 )
 
-# ===========================================================
-# ⚖️ UNIT TYPE
-# ===========================================================
+# ---------------- UNIT TYPE ----------------------------------------
 @admin.register(UnitType)
 class UnitTypeAdmin(admin.ModelAdmin):
     list_display = ('name', 'abbreviation', 'conversion_factor', 'base_unit')
     search_fields = ('name', 'abbreviation')
 
 
-# ===========================================================
-# 🧂 INGREDIENT
-# ===========================================================
+# ---------------- INGREDIENT ----------------------------------------
 class IngredientHistoryInline(admin.TabularInline):
     model = IngredientHistory
     extra = 0
@@ -48,9 +44,8 @@ class IngredientAdmin(admin.ModelAdmin):
     last_updated.short_description = "Last Updated"
 
 
-# ===========================================================
-# 🍽 FOOD ITEM (Recipes)
-# ===========================================================
+
+# ---------------- FOOD ITEM ----------------------------------------
 class FoodIngredientInline(admin.TabularInline):
     model = FoodIngredient
     extra = 1
@@ -72,9 +67,7 @@ class FoodIngredientAdmin(admin.ModelAdmin):
     search_fields = ('food_item__name', 'ingredient__name')
 
 
-# ===========================================================
-# 🍴 MENU ITEM
-# ===========================================================
+# ----------------  MENU ITEM ----------------------------------------
 @admin.register(MenuItem)
 class MenuItemAdmin(admin.ModelAdmin):
     list_display = ('name', 'restaurant', 'category', 'created_at')
@@ -83,9 +76,7 @@ class MenuItemAdmin(admin.ModelAdmin):
     autocomplete_fields = ('restaurant',)
 
 
-# ===========================================================
-# 🧾 MENU ITEM BATCH (Prepared Food Tracking)
-# ===========================================================
+# ---------------- MENU ITEM (BATCH) ----------------------------------------
 @admin.register(MenuItemBatch)
 class MenuItemBatchAdmin(admin.ModelAdmin):
     list_display = (
@@ -114,9 +105,7 @@ class MenuItemBatchAdmin(admin.ModelAdmin):
     status_display.short_description = "Status"
 
 
-# ===========================================================
-# 🛒 INGREDIENT PURCHASE
-# ===========================================================
+# ---------------- INGREDIENT PURCHASE ----------------------------------------
 @admin.register(IngredientPurchase)
 class IngredientPurchaseAdmin(admin.ModelAdmin):
     list_display = (
@@ -140,9 +129,7 @@ class IngredientPurchaseAdmin(admin.ModelAdmin):
     is_expired_display.short_description = "Status"
 
 
-# ===========================================================
-# 🕓 INGREDIENT HISTORY
-# ===========================================================
+# ---------------- INGREDIENT HISTORY ----------------------------------------
 @admin.register(IngredientHistory)
 class IngredientHistoryAdmin(admin.ModelAdmin):
     list_display = ('ingredient', 'change_type', 'amount', 'unit', 'note', 'timestamp')

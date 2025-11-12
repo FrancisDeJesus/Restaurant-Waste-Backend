@@ -23,6 +23,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/employees/', include('employees.urls')),
     path('api/accounts/', include('accounts.urls')),    
+    path('api/accounts/', include('accounts.urls')),
     path('api/', include('trash_pickups.urls')),
     path('api/rewards/', include('rewards.urls')),
     path('api/', include('donation_drive.urls')),

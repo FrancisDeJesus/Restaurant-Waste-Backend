@@ -9,9 +9,8 @@ from .views import (
     IngredientPurchaseViewSet,
 )
 
-# ===========================================================
-# 🍽 ROUTER SETUP
-# ===========================================================
+
+# ---------------- ROUTER ----------------------------------------
 router = DefaultRouter()
 
 # 🧂 Ingredient & Unit Type
@@ -26,7 +25,6 @@ router.register(r'menu_items', MenuItemViewSet, basename='menuitem')
 router.register(r'menu_batches', MenuItemBatchViewSet, basename='menubatch')
 router.register(r'ingredient_purchases', IngredientPurchaseViewSet, basename='ingredientpurchase')
 
-# ===========================================================
-# 🔗 URL Patterns
-# ===========================================================
+
+# ---------------- URL  ----------------------------------------
 urlpatterns = router.urls

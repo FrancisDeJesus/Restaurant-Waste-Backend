@@ -7,14 +7,10 @@ from .models import UnitType
 
 @receiver(post_migrate)
 def create_default_unit_types(sender, **kwargs):
-    """
-    Automatically creates default unit types (Piece, Kilogram, etc.)
-    only after the UnitType table has been created.
-    """
+
     if sender.name != "food_menu":
         return
-
-    # ✅ Prevent running before the table exists
+    
     with connection.cursor() as cursor:
         tables = connection.introspection.table_names()
         if "food_menu_unittype" not in tables:

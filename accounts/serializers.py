@@ -6,13 +6,29 @@ from django.contrib.auth.models import User
 from .models import UserProfile
 from drivers.models import Driver
 
-
+# ============================================================
+# 👤 USER PROFILE SERIALIZER — for /accounts/profile/
+# ============================================================
 class UserProfileSerializer(serializers.ModelSerializer):
-    role = serializers.SerializerMethodField()
+    username = serializers.CharField(source="user.username", read_only=True)
+    email = serializers.EmailField(source="user.email", read_only=True)
+    role = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = UserProfile
-        fields = ['id', 'user', 'address', 'role']
+        fields = [
+            "id",
+            "user",
+            "username",
+            "email",
+            "restaurant_name",
+            "position",
+            "address",
+            "latitude",
+            "longitude",
+            "role",
+        ]
+        read_only_fields = ["id", "user", "username", "email", "role"]
 
     def get_role(self, obj):
         user = obj.user
@@ -20,8 +36,20 @@ class UserProfileSerializer(serializers.ModelSerializer):
             return "driver"
         elif hasattr(user, "employee_profile"):
             return "employee"
-        else:
-            return "restaurant"
+        return "restaurant"
+
+    def update(self, instance, validated_data):
+        """
+        Allows updating restaurant name, address, and coordinates
+        without affecting linked user object.
+        """
+        instance.restaurant_name = validated_data.get("restaurant_name", instance.restaurant_name)
+        instance.position = validated_data.get("position", instance.position)
+        instance.address = validated_data.get("address", instance.address)
+        instance.latitude = validated_data.get("latitude", instance.latitude)
+        instance.longitude = validated_data.get("longitude", instance.longitude)
+        instance.save()
+        return instance
 
 
 # ============================================================
@@ -68,5 +96,5 @@ class DriverTokenObtainPairSerializer(serializers.Serializer):
             "refresh": str(refresh),
             "access": str(refresh.access_token),
             "driver_id": driver.id,
-            "full_name": full_name,  # ✅ no .first_name or .last_name needed
+            "full_name": full_name,
         }

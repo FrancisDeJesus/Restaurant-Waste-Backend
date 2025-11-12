@@ -15,10 +15,7 @@ from .serializers import (
 )
 import json
 
-
-# ===========================================================
-# 🍽 FOOD ITEM
-# ===========================================================
+# ---------------- FOOD ITEM ----------------------------------------
 class FoodItemViewSet(viewsets.ModelViewSet):
     serializer_class = FoodItemSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -29,10 +26,7 @@ class FoodItemViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(restaurant=self.request.user)
 
-
-# ===========================================================
-# 🍴 MENU ITEM
-# ===========================================================
+# ---------------- MENU ITEM ----------------------------------------
 class MenuItemViewSet(viewsets.ModelViewSet):
     serializer_class = MenuItemSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -44,9 +38,7 @@ class MenuItemViewSet(viewsets.ModelViewSet):
         serializer.save(restaurant=self.request.user)
 
 
-# ===========================================================
-# 🧾 MENU ITEM BATCH
-# ===========================================================
+# ---------------- MENU ITEM (BATCH) ----------------------------------------
 class MenuItemBatchViewSet(viewsets.ModelViewSet):
     serializer_class = MenuItemBatchSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -65,7 +57,6 @@ class MenuItemBatchViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def perform_create(self, serializer):
-        """Auto-deduct ingredients when a new batch is prepared."""
         batch = serializer.save()
         menu_item = batch.menu_item
         servings = batch.quantity_prepared
@@ -103,7 +94,6 @@ class MenuItemBatchViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['patch'], url_path='discard')
     def discard_batch(self, request, pk=None):
-        """Mark a batch as discarded."""
         batch = self.get_object()
         reason = request.data.get('reason', 'Expired')
         weight = float(request.data.get('weight_discarded', 0))
@@ -134,10 +124,7 @@ class MenuItemBatchViewSet(viewsets.ModelViewSet):
             "active_batches": active,
         })
 
-
-# ===========================================================
-# 🛒 INGREDIENT PURCHASE
-# ===========================================================
+# ---------------- INGREDIENT PURCHASE ----------------------------------------
 class IngredientPurchaseViewSet(viewsets.ModelViewSet):
     serializer_class = IngredientPurchaseSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -148,10 +135,7 @@ class IngredientPurchaseViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(restaurant=self.request.user)
 
-
-# ===========================================================
-# 🧂 INGREDIENT
-# ===========================================================
+# ---------------- INGREDIENT ----------------------------------------
 class IngredientViewSet(viewsets.ModelViewSet):
     serializer_class = IngredientSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -190,10 +174,7 @@ class IngredientViewSet(viewsets.ModelViewSet):
         history = ingredient.history.order_by('-timestamp')
         return Response(IngredientHistorySerializer(history, many=True).data)
 
-
-# ===========================================================
-# ⚖️ UNIT TYPE
-# ===========================================================
+# ---------------- UNIT TYPE ----------------------------------------
 class UnitTypeViewSet(viewsets.ModelViewSet):
     queryset = UnitType.objects.all().order_by('name')
     serializer_class = UnitTypeSerializer

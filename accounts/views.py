@@ -7,6 +7,9 @@ from django.contrib.auth import authenticate
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework_simplejwt.tokens import RefreshToken
+from .firebase_config import auth as firebase_auth
+from .serializers import UserProfileSerializer
+
 
 from .models import UserProfile
 from drivers.models import Driver
@@ -189,3 +192,94 @@ class DriverTokenObtainPairSerializer(serializers.Serializer):
             "driver_id": driver.id,
             "full_name": driver.full_name,
         }
+# ------------------GOOGLE LOG IN ---------------------------------
+
+class GoogleAuthView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        try:
+            # ✅ Accept any possible key name from frontend
+            firebase_token = (
+                request.data.get("firebase_token")
+                or request.data.get("token")
+                or request.data.get("idToken")
+                or request.data.get("credential")
+            )
+
+            if not firebase_token:
+                return Response(
+                    {"error": "Missing Firebase token"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # ✅ Verify token with Firebase Admin SDK
+            decoded = firebase_auth.verify_id_token(firebase_token)
+            email = decoded.get("email")
+            name = decoded.get("name", "Google User")
+            uid = decoded.get("uid")
+
+            if not email:
+                return Response(
+                    {"error": "Email not found in token"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # ✅ Create or get Django user
+            user, created = User.objects.get_or_create(
+                username=email,
+                defaults={"email": email, "first_name": name},
+            )
+
+            # ✅ Ensure linked UserProfile exists
+            profile, prof_created = UserProfile.objects.get_or_create(
+                user=user,
+                defaults={
+                    "restaurant_name": name,
+                    "address": "Signed up with Google",
+                    "latitude": None,
+                    "longitude": None,
+                },
+            )
+
+            # ✅ Issue JWT tokens (SimpleJWT)
+            refresh = RefreshToken.for_user(user)
+
+            return Response(
+                {
+                    "id": user.id,
+                    "email": user.email,
+                    "username": user.username,
+                    "name": user.first_name,
+                    "restaurant_name": profile.restaurant_name,
+                    "address": profile.address,
+                    "latitude": profile.latitude,
+                    "longitude": profile.longitude,
+                    "access": str(refresh.access_token),
+                    "refresh": str(refresh),
+                    "new_user": created,
+                    "new_profile": prof_created,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        
+# ============================================================
+# ⚙️ USER PROFILE UPDATE VIEW
+# ============================================================
+class UserProfileUpdateView(generics.RetrieveUpdateAPIView):
+    """
+    Allows the logged-in user to view and edit their own profile details.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = UserProfileSerializer
+
+    def get_object(self):
+        # Always return the current user's profile
+        return self.request.user.profile
+        

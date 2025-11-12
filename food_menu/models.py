@@ -3,14 +3,9 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
 
-# ===========================================================
-# ⚖️ UNIT TYPE
-# ===========================================================
+# ---------------- UNIT TYPES ----------------------------------------
 class UnitType(models.Model):
-    """
-    Defines measurement units for ingredients (e.g., grams, liters, pieces).
-    Includes conversion factors for base unit conversions.
-    """
+
     name = models.CharField(max_length=50)
     abbreviation = models.CharField(max_length=10)
     base_unit = models.CharField(max_length=10, default="ml")  # or "g" for weight
@@ -19,15 +14,9 @@ class UnitType(models.Model):
     def __str__(self):
         return f"{self.name} ({self.abbreviation})"
 
-
-# ===========================================================
-# 🧂 INGREDIENT
-# ===========================================================
+# ---------------- INGREDIENTS ----------------------------------------
 class Ingredient(models.Model):
-    """
-    Represents an ingredient in the restaurant’s inventory.
-    Tracks quantity and associated measurement unit.
-    """
+
     restaurant = models.ForeignKey(User, on_delete=models.CASCADE)
     name = models.CharField(max_length=100)
     quantity = models.FloatField(default=0.0)
@@ -36,16 +25,11 @@ class Ingredient(models.Model):
     def __str__(self):
         return f"{self.name} ({self.quantity} {self.unit_type.abbreviation})"
 
-    # ✅ Convert to base unit
     def quantity_in_base_unit(self):
         return self.quantity * self.unit_type.conversion_factor
 
-    # ✅ Add or deduct stock safely + log changes
     def adjust_quantity(self, amount, note=None):
-        """
-        Adjust ingredient quantity and automatically log the change.
-        Positive amount = added; negative = deducted.
-        """
+
         from .models import IngredientHistory
         change_type = "added" if amount > 0 else "deducted"
         self.quantity += amount
@@ -58,14 +42,9 @@ class Ingredient(models.Model):
             note=note or f"Stock {change_type} automatically."
         )
 
-
-# ===========================================================
-# 🛒 INGREDIENT PURCHASE (Procurement & Supply Tracking)
-# ===========================================================
+# ---------------- INGREDIENT PURCHASE ----------------------------------------
 class IngredientPurchase(models.Model):
-    """
-    Logs each ingredient purchase to track sourcing and expiry.
-    """
+ 
     restaurant = models.ForeignKey(User, on_delete=models.CASCADE)
     ingredient = models.ForeignKey(Ingredient, on_delete=models.CASCADE, related_name="purchases")
     quantity = models.FloatField(default=0.0)
@@ -80,14 +59,8 @@ class IngredientPurchase(models.Model):
     def __str__(self):
         return f"{self.ingredient.name} ({self.quantity} {self.unit}) - purchased {self.purchase_date}"
 
-
-# ===========================================================
-# 🍽 FOOD ITEM (Recipe Definition)
-# ===========================================================
+# ---------------- FOOD ITEMS ----------------------------------------
 class FoodItem(models.Model):
-    """
-    Represents a dish or recipe (base definition for MenuItem).
-    """
     restaurant = models.ForeignKey(User, on_delete=models.CASCADE)
     name = models.CharField(max_length=100)
     description = models.TextField(blank=True, null=True)
@@ -95,25 +68,28 @@ class FoodItem(models.Model):
     category = models.CharField(max_length=50, blank=True, null=True)
     servings = models.PositiveIntegerField(default=1)
     created_at = models.DateTimeField(auto_now_add=True)
+    shelf_life_days = models.PositiveIntegerField(default=3)
 
     def __str__(self):
         return self.name
 
-    # ✅ Compute total & per-serving cost (can be expanded later)
+    @property
+    def expiration_date(self):
+        return self.created_at + timezone.timedelta(days=self.shelf_life_days)
+
+    @property
+    def is_spoiled(self):
+        return timezone.now() > self.expiration_date
+
     def total_ingredient_cost(self):
         return sum(fi.quantity_used for fi in self.food_ingredients.all())
 
     def cost_per_serving(self):
         return self.total_ingredient_cost() / self.servings if self.servings > 0 else 0
 
-
-# ===========================================================
-# 🍱 FOOD INGREDIENT (Links Recipe ↔ Inventory)
-# ===========================================================
+# ---------------- FOOD INGREDIENT ----------------------------------------
 class FoodIngredient(models.Model):
-    """
-    Connects FoodItem (recipe) to its Ingredients.
-    """
+    
     food_item = models.ForeignKey(
         FoodItem, on_delete=models.CASCADE, related_name="food_ingredients"
     )
@@ -133,9 +109,7 @@ class FoodIngredient(models.Model):
         return (self.usage_in_base_unit() / self.ingredient.quantity_in_base_unit()) * 100
 
 
-# ===========================================================
-# 🕓 INGREDIENT HISTORY (Inventory Log)
-# ===========================================================
+# ---------------- INGREDIENT HISTORY ----------------------------------------=
 class IngredientHistory(models.Model):
     CHANGE_CHOICES = [
         ("added", "Added"),
@@ -156,9 +130,7 @@ class IngredientHistory(models.Model):
         return f"{self.ingredient.name} - {self.change_type} ({self.amount} {self.unit or ''})"
 
 
-# ===========================================================
-# 🍴 MENU ITEM (Dish shown in menu)
-# ===========================================================
+# ---------------- MENU ITEMS ----------------------------------------
 class MenuItem(models.Model):
     restaurant = models.ForeignKey(User, on_delete=models.CASCADE)
     food_item = models.ForeignKey(FoodItem, on_delete=models.SET_NULL, null=True, blank=True)
@@ -171,14 +143,9 @@ class MenuItem(models.Model):
         return self.name
 
 
-# ===========================================================
-# 🧾 MENU ITEM BATCH (Preparation, Expiry, Discard Tracking)
-# ===========================================================
+# ---------------- MENU ITEM (BATCH) ----------------------------------------
 class MenuItemBatch(models.Model):
-    """
-    Tracks each prepared batch of food (production record).
-    Used for shelf-life, expiry, and waste analytics.
-    """
+
     menu_item = models.ForeignKey(MenuItem, on_delete=models.CASCADE, related_name="batches")
     quantity_prepared = models.PositiveIntegerField(default=0)
     prepared_date = models.DateField(default=timezone.now)
