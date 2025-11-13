@@ -60,3 +60,13 @@ class RewardRedemption(models.Model):
 
     class Meta:
         ordering = ["-redeemed_at"]
+
+
+class RedeemedHistory(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="redeemed_history")
+    reward = models.ForeignKey(Reward, on_delete=models.CASCADE, related_name="redeemed_records")
+    points_used = models.IntegerField()
+    date_redeemed = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.user.username} redeemed {self.reward.name}"

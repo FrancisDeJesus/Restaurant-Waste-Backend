@@ -8,18 +8,14 @@ from trash_pickups.models import TrashPickup
 from employees.models import Employee
 from datetime import datetime
 
-
-# ===============================================================
-# 📊 1. VOLUME & WASTE ANALYTICS
-# ===============================================================
+# --------------- WASTE ANALYTICS ---------------------------------------
 class VolumeWasteAnalyticsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        user = request.user  # ✅ fixed typo (was request.use)
+        user = request.user  
         pickups = TrashPickup.objects.filter(user=user)
 
-        # 1️⃣ Weekly Waste Trends
         weekly_data = (
             pickups.extra({'week': "strftime('%%W', created_at)"})
             .values('week')
@@ -27,28 +23,23 @@ class VolumeWasteAnalyticsView(APIView):
             .order_by('week')
         )
 
-        # 2️⃣ Waste Type Breakdown
         waste_type_data = (
             pickups.values('waste_type')
             .annotate(total=Sum('weight_kg'))
             .order_by('-total')
         )
 
-        # 3️⃣ Pickup Frequency
         pickup_frequency = pickups.count()
 
-        # 4️⃣ Segregation Accuracy
         segregation_accuracy = (
             pickups.aggregate(accuracy=Avg('segregation_score')).get('accuracy') or 0
         )
 
-        # 5️⃣ Employee Activity
         employees = Employee.objects.filter(owner=user)
         employee_activity_counts = {
             emp.name: pickups.filter(driver__id=emp.id).count() for emp in employees
         }
 
-        # 6️⃣ Monthly Waste & Reward Eligibility
         now_dt = datetime.now()
         monthly_total = (
             pickups.filter(
@@ -74,9 +65,6 @@ class VolumeWasteAnalyticsView(APIView):
         return Response(data)
 
 
-# ===============================================================
-# ♻️ 2. TODAY'S WASTE SUMMARY
-# ===============================================================
 class TodayWasteSummaryView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -98,9 +86,6 @@ class TodayWasteSummaryView(APIView):
         })
 
 
-# ===============================================================
-# 💡 3. EFFICIENCY SCORE
-# ===============================================================
 class EfficiencyScoreView(APIView):
     permission_classes = [IsAuthenticated]
 

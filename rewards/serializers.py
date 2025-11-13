@@ -1,12 +1,9 @@
 from rest_framework import serializers
-from .models import Reward, RewardRedemption, RewardPoint
+from .models import Reward, RewardRedemption, RewardPoint, RedeemedHistory
 
-
-# =========================================================
-# 🎯 REWARD SERIALIZER
-# =========================================================
+# ------------ REWARDS SERIALIZER ----------------------------------------
 class RewardSerializer(serializers.ModelSerializer):
-    is_available = serializers.ReadOnlyField()  # 👈 Computed property
+    is_available = serializers.ReadOnlyField()  
 
     class Meta:
         model = Reward
@@ -26,9 +23,7 @@ class RewardSerializer(serializers.ModelSerializer):
         read_only_fields = ["created_at", "updated_at", "is_available"]
 
 
-# =========================================================
-# 🧾 REWARD REDEMPTION SERIALIZER
-# =========================================================
+# ------------ REWARDS REDEMPTION ----------------------------------------
 class RewardRedemptionSerializer(serializers.ModelSerializer):
     reward_title = serializers.CharField(source="reward.title", read_only=True)
 
@@ -37,10 +32,16 @@ class RewardRedemptionSerializer(serializers.ModelSerializer):
         fields = ["id", "reward", "reward_title", "redeemed_at"]
 
 
-# =========================================================
-# 🪙 REWARD POINT SERIALIZER
-# =========================================================
+# ------------ REWARDS POINTS ----------------------------------------
 class RewardPointSerializer(serializers.ModelSerializer):
     class Meta:
         model = RewardPoint
         fields = ["id", "points", "description", "created_at"]
+
+# ------------ REWARDS HISTORY ----------------------------------------
+class RedeemedHistorySerializer(serializers.ModelSerializer):
+    reward_name = serializers.CharField(source="reward.name", read_only=True)
+
+    class Meta:
+        model = RedeemedHistory
+        fields = ["id", "reward_name", "points_used", "date_redeemed"]
