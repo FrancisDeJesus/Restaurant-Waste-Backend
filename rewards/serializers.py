@@ -40,7 +40,7 @@ class RewardPointSerializer(serializers.ModelSerializer):
 
 # ------------ REWARDS HISTORY ----------------------------------------
 class RedeemedHistorySerializer(serializers.ModelSerializer):
-    reward_name = serializers.CharField(source="reward.name", read_only=True)
+    reward_name = serializers.CharField(source="reward.title", read_only=True)
 
     class Meta:
         model = RedeemedHistory

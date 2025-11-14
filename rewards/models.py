@@ -69,4 +69,4 @@ class RedeemedHistory(models.Model):
     date_redeemed = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.user.username} redeemed {self.reward.name}"
+        return f"{self.user.username} redeemed {self.reward.title}"
