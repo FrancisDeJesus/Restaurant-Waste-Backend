@@ -44,6 +44,7 @@ class TrashPickup(models.Model):
     weight_kg = models.DecimalField(max_digits=6, decimal_places=2)
     schedule_date = models.DateTimeField(default=timezone.now)
     address = models.CharField(max_length=255)
+    proof_photo = models.ImageField(upload_to="pickup_proofs/", null=True, blank=True)
 
     # 📍 Location for map visualization
     latitude = models.DecimalField(

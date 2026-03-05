@@ -6,6 +6,7 @@ class TrashPickupSerializer(serializers.ModelSerializer):
         source='get_waste_type_display', read_only=True
     )
     user = serializers.ReadOnlyField(source='user.username')
+    proof_photo_url = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = TrashPickup
@@ -19,6 +20,8 @@ class TrashPickupSerializer(serializers.ModelSerializer):
             'latitude',     # 🆕 added
             'longitude',    # 🆕 added
             'status',
+            'proof_photo',
+            'proof_photo_url',
             'schedule_date',
             'created_at',
             'updated_at',
@@ -28,7 +31,16 @@ class TrashPickupSerializer(serializers.ModelSerializer):
             'updated_at',
             'user',
             'waste_type_display',
+            'proof_photo_url',
         ]
+
+    def get_proof_photo_url(self, obj):
+        if not obj.proof_photo:
+            return None
+        request = self.context.get('request')
+        if request:
+            return request.build_absolute_uri(obj.proof_photo.url)
+        return obj.proof_photo.url
 
     def validate_weight_kg(self, value):
         if value <= 0:
