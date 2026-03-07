@@ -66,7 +66,7 @@ class DonationViewSet(viewsets.ModelViewSet):
         donation = Donation.objects.create(
             drive=drive,
             waste_type=waste_type,
-            weight_kg=pickup.weight_kg,
+            weight_kg=pickup.get_effective_weight_kg(),
             donated_at=timezone.now(),
         )
 

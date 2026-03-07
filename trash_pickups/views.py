@@ -4,8 +4,8 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
-from django.db.models import Sum
-from django.db.models.functions import TruncMonth
+from django.db.models import Sum, Value, FloatField
+from django.db.models.functions import TruncMonth, Coalesce
 from rewards.models import RewardPoint
 from .models import TrashPickup
 from .serializers import TrashPickupSerializer
@@ -133,9 +133,28 @@ class TrashPickupViewSet(viewsets.ModelViewSet):
             return Response({"error": "Pickup already completed."},
                             status=status.HTTP_400_BAD_REQUEST)
 
+        # Driver can provide measured weight on completion.
+        actual_weight_raw = request.data.get("actual_weight_kg")
+        if actual_weight_raw is not None and str(actual_weight_raw).strip() != "":
+            try:
+                actual_weight = float(actual_weight_raw)
+                if actual_weight <= 0:
+                    return Response(
+                        {"error": "actual_weight_kg must be greater than zero."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                pickup.actual_weight_kg = actual_weight
+                # Keep legacy field synchronized for older consumers.
+                pickup.weight_kg = actual_weight
+            except (TypeError, ValueError):
+                return Response(
+                    {"error": "actual_weight_kg must be a valid number."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
         # 🧮 Calculate reward points
         waste_type = (pickup.waste_type or "").lower()
-        weight = float(pickup.weight_kg or 0)
+        weight = float(pickup.get_effective_weight_kg() or 0)
 
         multipliers = {
             "recyclable": 2.0,
@@ -166,7 +185,7 @@ class TrashPickupViewSet(viewsets.ModelViewSet):
             RewardPoint.objects.create(
                 user=owner_user,
                 points=total_points,
-                description=f"Completed {pickup.get_waste_type_display()} pickup ({pickup.weight_kg} kg)"
+                description=f"Completed {pickup.get_waste_type_display()} pickup ({weight} kg)"
             )
             print(f"✅ Created RewardPoint for {owner_user.username} → {total_points} pts")
         except Exception as e:
@@ -235,12 +254,20 @@ class TrashPickupViewSet(viewsets.ModelViewSet):
         else:
             queryset = TrashPickup.objects.filter(user=user)
 
-        total_volume = queryset.aggregate(total=Sum("weight_kg"))["total"] or 0
-        by_type = queryset.values("waste_type").annotate(total=Sum("weight_kg")).order_by("-total")
+        weight_expr = Coalesce(
+            "actual_weight_kg",
+            "estimated_weight_kg",
+            "weight_kg",
+            Value(0.0),
+            output_field=FloatField(),
+        )
+
+        total_volume = queryset.aggregate(total=Sum(weight_expr))["total"] or 0
+        by_type = queryset.values("waste_type").annotate(total=Sum(weight_expr)).order_by("-total")
         by_month = (
             queryset.annotate(month=TruncMonth("created_at"))
             .values("month")
-            .annotate(total=Sum("weight_kg"))
+            .annotate(total=Sum(weight_expr))
             .order_by("month")
         )
 

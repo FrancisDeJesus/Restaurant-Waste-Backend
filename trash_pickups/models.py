@@ -41,7 +41,10 @@ class TrashPickup(models.Model):
     # 🗑️ PICKUP DETAILS
     # =========================================================
     waste_type = models.CharField(max_length=50, choices=WASTE_TYPE_CHOICES)
-    weight_kg = models.DecimalField(max_digits=6, decimal_places=2)
+    # Legacy field kept for backward compatibility with old clients.
+    weight_kg = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    estimated_weight_kg = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    actual_weight_kg = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
     schedule_date = models.DateTimeField(default=timezone.now)
     address = models.CharField(max_length=255)
     proof_photo = models.ImageField(upload_to="pickup_proofs/", null=True, blank=True)
@@ -84,6 +87,10 @@ class TrashPickup(models.Model):
 
     def __str__(self):
         return f"{self.get_waste_type_display()} - {self.user.username} ({self.status})"
+
+    def get_effective_weight_kg(self):
+        """Use driver-measured weight first, then restaurant estimate, then legacy value."""
+        return self.actual_weight_kg or self.estimated_weight_kg or self.weight_kg or 0
 
     class Meta:
         ordering = ["-created_at"]

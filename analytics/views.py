@@ -2,11 +2,22 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django.db.models import Sum, Avg
+from django.db.models import Sum, Avg, Value, FloatField
+from django.db.models.functions import Coalesce
 from django.utils.timezone import now
 from trash_pickups.models import TrashPickup
 from employees.models import Employee
 from datetime import datetime
+
+
+def _effective_weight_expr():
+    return Coalesce(
+        'actual_weight_kg',
+        'estimated_weight_kg',
+        'weight_kg',
+        Value(0.0),
+        output_field=FloatField(),
+    )
 
 # --------------- WASTE ANALYTICS ---------------------------------------
 class VolumeWasteAnalyticsView(APIView):
@@ -15,17 +26,18 @@ class VolumeWasteAnalyticsView(APIView):
     def get(self, request):
         user = request.user  
         pickups = TrashPickup.objects.filter(user=user)
+        weight_expr = _effective_weight_expr()
 
         weekly_data = (
             pickups.extra({'week': "strftime('%%W', created_at)"})
             .values('week')
-            .annotate(total_weight=Sum('weight_kg'))
+            .annotate(total_weight=Sum(weight_expr))
             .order_by('week')
         )
 
         waste_type_data = (
             pickups.values('waste_type')
-            .annotate(total=Sum('weight_kg'))
+            .annotate(total=Sum(weight_expr))
             .order_by('-total')
         )
 
@@ -45,7 +57,7 @@ class VolumeWasteAnalyticsView(APIView):
             pickups.filter(
                 created_at__month=now_dt.month,
                 created_at__year=now_dt.year
-            ).aggregate(total_weight=Sum('weight_kg')).get('total_weight') or 0
+            ).aggregate(total_weight=Sum(weight_expr)).get('total_weight') or 0
         )
 
         waste_limit = 500.0
@@ -71,13 +83,14 @@ class TodayWasteSummaryView(APIView):
     def get(self, request):
         user = request.user
         today = now().date()
+        weight_expr = _effective_weight_expr()
 
         total_today = (
             TrashPickup.objects.filter(
                 user=user,
                 status='completed',
                 completed_at__date=today
-            ).aggregate(total=Sum('weight_kg')).get('total') or 0
+            ).aggregate(total=Sum(weight_expr)).get('total') or 0
         )
 
         return Response({
