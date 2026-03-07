@@ -2,6 +2,33 @@
 
 Django REST API backend for the Restaurant Waste Management System.
 
+## Project Description
+
+The Restaurant Waste Management System is a mobile and web-based platform designed
+to support restaurants in Davao City in managing food waste collection,
+segregation, and reporting. Through this backend, the platform provides secure
+API services for waste pickup requests, waste validation workflows, account and
+role management, and analytics data processing.
+
+This backend serves as the central service layer that powers the frontend app,
+driver operations, and analytics modules.
+
+## Core Features
+
+- Secure authentication and account services
+- Waste pickup request and status management
+- Food menu and donation drive modules
+- Driver-related pickup coordination endpoints
+- Rewards and subscription services
+- Analytics endpoints for waste monitoring
+
+## System Architecture
+
+Client Applications (Flutter Mobile/Web)
+-> REST API Layer (Django REST Framework)
+-> Domain Modules (accounts, pickups, donations, rewards, analytics)
+-> Database (SQLite for development; configurable for production)
+
 ## Overview
 
 This backend provides APIs for:
