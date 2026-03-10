@@ -22,6 +22,90 @@ driver operations, and analytics modules.
 - Rewards and subscription services
 - Analytics endpoints for waste monitoring
 
+## Trash Pickup Weight Model
+
+Trash pickup records support three related weight fields:
+
+- `estimated_weight_kg`: restaurant-side estimate at request time
+- `actual_weight_kg`: measured value (typically set at form submit or completion)
+- `weight_kg`: legacy compatibility field
+
+Effective weight resolution order used by backend services:
+
+1. `actual_weight_kg`
+2. `estimated_weight_kg`
+3. `weight_kg`
+
+This fallback logic is used in serializers and analytics aggregation so existing clients remain compatible while newer clients can submit both estimated and actual values.
+
+## Trash Pickup API Notes
+
+For `trash_pickups` create/update payloads:
+
+- send `estimated_weight_kg` (required on create)
+- send `actual_weight_kg` when available
+- `weight_kg` is still accepted for backward compatibility
+
+When completing a pickup (`PATCH /api/trash_pickups/{id}/complete/`), you can include `actual_weight_kg` to overwrite the effective measured weight used by analytics and downstream modules.
+
+### Quick API Request/Response Examples
+
+Use these examples for manual testing (Postman, curl, or REST client).
+
+`POST /api/trash_pickups/` (create pickup with estimated weight)
+
+```http
+POST /api/trash_pickups/
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "waste_type": "food",
+  "estimated_weight_kg": 12.5,
+  "schedule_date": "2026-03-12T10:00:00Z"
+}
+```
+
+Sample `201 Created` response:
+
+```json
+{
+  "message": "Pickup created successfully and is now visible to drivers.",
+  "pickup": {
+    "id": 41,
+    "waste_type": "food",
+    "waste_type_display": "Food Waste",
+    "weight_kg": "12.5",
+    "estimated_weight_kg": "12.5",
+    "actual_weight_kg": null,
+    "status": "pending"
+  }
+}
+```
+
+`PATCH /api/trash_pickups/{id}/complete/` (driver submits measured weight)
+
+```http
+PATCH /api/trash_pickups/41/complete/
+Authorization: Bearer <driver_access_token>
+Content-Type: application/json
+
+{
+  "actual_weight_kg": 11.8
+}
+```
+
+Sample `200 OK` response:
+
+```json
+{
+  "message": "Pickup #41 completed! 🎉 11 points awarded.",
+  "points_awarded": 11
+}
+```
+
+Note: Analytics and totals resolve weight in this order: `actual_weight_kg` -> `estimated_weight_kg` -> `weight_kg`.
+
 ## System Architecture
 
 Client Applications (Flutter Mobile/Web)
@@ -169,3 +253,18 @@ db.sqlite3
 
 - Keep this README updated when dependencies or endpoint structure changes.
 - Consider adding a pinned `requirements.txt` for reproducible setup.
+
+## Thesis API Validation Checklist
+
+Run this quick pass before demo day.
+
+- [ ] `python manage.py migrate` completed without errors
+- [ ] Auth token retrieval works via `POST /api/token/`
+- [ ] Pickup create works via `POST /api/trash_pickups/` with `estimated_weight_kg`
+- [ ] Pickup complete works via `PATCH /api/trash_pickups/{id}/complete/` with `actual_weight_kg`
+- [ ] Analytics endpoint returns updated totals after completion
+
+Expected behavior:
+
+- Effective weight priority is `actual_weight_kg` -> `estimated_weight_kg` -> `weight_kg`
+- Legacy clients that still send `weight_kg` remain compatible
